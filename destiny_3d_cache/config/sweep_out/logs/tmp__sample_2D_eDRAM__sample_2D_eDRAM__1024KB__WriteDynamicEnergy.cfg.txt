@@ -1,0 +1,237 @@
+User-defined configuration file (sweep_out/tmp_cfgs/tmp__sample_2D_eDRAM__sample_2D_eDRAM__1024KB__WriteDynamicEnergy.cfg) is loaded
+
+
+====================
+DESIGN SPECIFICATION
+====================
+Design Target: Cache
+Capacity   : 1MB
+Cache Line Size: 16Bytes
+Cache Associativity: 8 Ways
+
+Searching for the best solution that is optimized for write energy ...
+Using cell file: sample_2D_eDRAM.cell
+numSolutions = 39696 / numDesigns = 12115251
+
+=======================
+CACHE DESIGN -- SUMMARY
+=======================
+Access Mode: Normal
+Area:
+ - Total Area = 1.355mm^2
+ |--- Data Array Area = 623.534um x 1694.703um = 1.057mm^2
+ |--- Tag Array Area  = 48.024um x 6216.227um = 0.299mm^2
+Timing:
+ - Cache Hit Latency   = 0.770ns
+ - Cache Miss Latency  = 0.697ns
+ - Cache Write Latency = 0.667ns
+ - Cache Refresh Latency = 1.799us per bank
+ - Cache Availability = 100.000%
+Power:
+ - Cache Hit Dynamic Energy   = 0.030nJ per access
+ - Cache Miss Dynamic Energy  = 0.030nJ per access
+ - Cache Write Dynamic Energy = 0.022nJ per access
+ - Cache Refresh Dynamic Energy = 81.626nJ per bank
+ - Cache Total Leakage Power  = 262.827mW
+ |--- Cache Data Array Leakage Power = 198.585mW
+ |--- Cache Tag Array Leakage Power  = 64.242mW
+ - Cache Refresh Power = 0.000pW per bank
+
+CACHE DATA ARRAY DETAILS    
+    =============
+       SUMMARY   
+    =============
+    Optimized for: Write Energy
+    Memory Cell: Embedded DRAM
+    Cell Area (F^2)    : 33.100 (8.894Fx3.721F)
+    Cell Aspect Ratio  : 2.390
+    
+    =============
+    CONFIGURATION
+    =============
+    Bank Organization: 8 x 128
+     - Row Activation   : 8 / 8
+     - Column Activation: 1 / 128
+    Mat Organization: 2 x 1
+     - Row Activation   : 2 / 2
+     - Column Activation: 1 / 1
+     - Subarray Size    : 64 Rows x 64 Columns
+    Mux Level:
+     - Senseamp Mux      : 1
+     - Output Level-1 Mux: 1
+     - Output Level-2 Mux: 1
+     - One set is partitioned into 1 rows
+    Local Wire:
+     - Wire Type :     Local Aggressive
+     - Repeater Type:     No Repeaters
+     - Low Swing :     No
+    Global Wire:
+     - Wire Type :     Global Aggressive
+     - Repeater Type:     No Repeaters
+     - Low Swing :     No
+    Buffer Design Style:     Latency-Optimized
+    =============
+       RESULT
+    =============
+    Area:
+     - Total Area = 623.534um x 1.695mm = 1.057mm^2
+     |--- Mat Area      = 77.942um x 13.240um = 1031.939um^2   (53.209%)
+     |--- Subarray Area = 36.348um x 13.240um = 481.245um^2   (57.049%)
+     - Area Efficiency = 53.209%
+    Timing:
+     -  Read Latency = 312.614ps
+     |--- Non-H-Tree Latency = 46.798ps
+     |--- Mat Latency    = 265.815ps
+        |--- Predecoder Latency = 56.997ps
+        |--- Subarray Latency   = 208.818ps
+           |--- Row Decoder Latency = 51.187ps
+           |--- Bitline Latency     = 146.978ps
+           |--- Senseamp Latency    = 2.989ps
+           |--- Mux Latency         = 7.664ps
+           |--- Precharge Latency   = 36.703ps
+     - Write Latency = 312.614ps
+     |--- Non-H-Tree Latency = 46.798ps
+     |--- Mat Latency    = 265.815ps
+        |--- Predecoder Latency = 56.997ps
+        |--- Subarray Latency   = 208.818ps
+           |--- Row Decoder Latency = 51.187ps
+           |--- Charge Latency      = 29.391ps
+     - Refresh Latency = 1.655us
+     |--- Non-H-Tree Latency = 1.642us
+     |--- Mat Latency    = 12.931ns
+        |--- Predecoder Latency = 56.997ps
+        |--- Subarray Latency   = 12.874ns
+     - Read Bandwidth  = 82.332GB/s
+     - Write Bandwidth = 76.622GB/s
+    Power:
+     -  Read Dynamic Energy = 27.065pJ
+     |--- Non-H-Tree Dynamic Energy = 18.288pJ
+     |--- Mat Dynamic Energy    = 1.097pJ per mat
+        |--- Predecoder Dynamic Energy = 0.023pJ
+        |--- Subarray Dynamic Energy   = 0.537pJ per active subarray
+           |--- Row Decoder Dynamic Energy = 0.010pJ
+           |--- Mux Decoder Dynamic Energy = 0.027pJ
+           |--- Senseamp Dynamic Energy    = 0.178pJ
+           |--- Mux Dynamic Energy         = 0.014pJ
+           |--- Precharge Dynamic Energy   = 0.097pJ
+     - Write Dynamic Energy = 20.466pJ
+     |--- Non-H-Tree Dynamic Energy = 18.288pJ
+     |--- Mat Dynamic Energy    = 0.272pJ per mat
+        |--- Predecoder Dynamic Energy = 0.023pJ
+        |--- Subarray Dynamic Energy   = 0.125pJ per active subarray
+           |--- Row Decoder Dynamic Energy = 0.010pJ
+           |--- Mux Decoder Dynamic Energy = 0.027pJ
+           |--- Mux Dynamic Energy         = 0.014pJ
+     - Refresh Dynamic Energy = 67.812nJ
+     |--- Non-H-Tree Dynamic Energy = 67.283nJ
+     |--- Mat Dynamic Energy    = 66.205pJ per mat
+        |--- Predecoder Dynamic Energy = 2.786pJ
+        |--- Subarray Dynamic Energy   = 31.709pJ per active subarray
+           |--- Row Decoder Dynamic Energy = 0.000pJ
+           |--- Senseamp Dynamic Energy    = 0.178pJ
+           |--- Precharge Dynamic Energy   = 0.097pJ
+     - Leakage Power = 198.585mW
+     |--- Non-H-Tree Leakage Power = 0.000pW
+     |--- Mat Leakage Power        = 193.931uW per mat
+     - Refresh Power = 0.000pW
+
+CACHE TAG ARRAY DETAILS    
+    =============
+       SUMMARY   
+    =============
+    Optimized for: Write Energy
+    Memory Cell: Embedded DRAM
+    Cell Area (F^2)    : 33.100 (8.894Fx3.721F)
+    Cell Aspect Ratio  : 2.390
+    
+    =============
+    CONFIGURATION
+    =============
+    Bank Organization: 1 x 64
+     - Row Activation   : 1 / 1
+     - Column Activation: 1 / 64
+    Mat Organization: 2 x 2
+     - Row Activation   : 1 / 2
+     - Column Activation: 1 / 2
+     - Subarray Size    : 32 Rows x 264 Columns
+    Mux Level:
+     - Senseamp Mux      : 1
+     - Output Level-1 Mux: 1
+     - Output Level-2 Mux: 1
+     - One set is partitioned into 1 rows
+    Local Wire:
+     - Wire Type :     Local Aggressive
+     - Repeater Type:     No Repeaters
+     - Low Swing :     No
+    Global Wire:
+     - Wire Type :     Global Aggressive
+     - Repeater Type:     No Repeaters
+     - Low Swing :     Yes
+    Buffer Design Style:     Balanced
+    =============
+       RESULT
+    =============
+    Area:
+     - Total Area = 48.024um x 6.216mm = 298527.303um^2
+     |--- Mat Area      = 48.024um x 97.129um = 4664.489um^2   (48.558%)
+     |--- Subarray Area = 22.730um x 45.200um = 1027.420um^2   (55.114%)
+     - Area Efficiency = 48.558%
+    Timing:
+     -  Read Latency = 696.809ps
+     |--- Non-H-Tree Latency = 167.673ps
+     |--- Mat Latency    = 529.136ps
+        |--- Predecoder Latency = 62.257ps
+        |--- Subarray Latency   = 437.228ps
+           |--- Row Decoder Latency = 323.733ps
+           |--- Bitline Latency     = 87.443ps
+           |--- Senseamp Latency    = 2.544ps
+           |--- Mux Latency         = 0.000ps
+           |--- Precharge Latency   = 24.000ps
+        |--- Comparator Latency  = 29.651ps
+     - Write Latency = 667.158ps
+     |--- Non-H-Tree Latency = 167.673ps
+     |--- Mat Latency    = 499.485ps
+        |--- Predecoder Latency = 62.257ps
+        |--- Subarray Latency   = 437.228ps
+           |--- Row Decoder Latency = 323.733ps
+           |--- Charge Latency      = 0.229ps
+     - Refresh Latency = 1.799us
+     |--- Non-H-Tree Latency = 1.771us
+     |--- Mat Latency    = 28.107ns
+        |--- Predecoder Latency = 62.257ps
+        |--- Subarray Latency   = 13.991ns
+     - Read Bandwidth  = 30.001GB/s
+     - Write Bandwidth = 9.434GB/s
+    Power:
+     -  Read Dynamic Energy = 2.913pJ
+     |--- Non-H-Tree Dynamic Energy = 0.296pJ
+     |--- Mat Dynamic Energy    = 2.617pJ per mat
+        |--- Predecoder Dynamic Energy = 0.854pJ
+        |--- Subarray Dynamic Energy   = 1.763pJ per active subarray
+           |--- Row Decoder Dynamic Energy = 0.034pJ
+           |--- Mux Decoder Dynamic Energy = 0.108pJ
+           |--- Senseamp Dynamic Energy    = 0.734pJ
+           |--- Mux Dynamic Energy         = 0.000pJ
+           |--- Precharge Dynamic Energy   = 0.378pJ
+     - Write Dynamic Energy = 1.442pJ
+     |--- Non-H-Tree Dynamic Energy = 0.296pJ
+     |--- Mat Dynamic Energy    = 1.146pJ per mat
+        |--- Predecoder Dynamic Energy = 0.854pJ
+        |--- Subarray Dynamic Energy   = 0.292pJ per active subarray
+           |--- Row Decoder Dynamic Energy = 0.034pJ
+           |--- Mux Decoder Dynamic Energy = 0.108pJ
+           |--- Mux Dynamic Energy         = 0.000pJ
+     - Refresh Dynamic Energy = 13.814nJ
+     |--- Non-H-Tree Dynamic Energy = 13.598nJ
+     |--- Mat Dynamic Energy    = 215.838pJ per mat
+        |--- Predecoder Dynamic Energy = 162.894pJ
+        |--- Subarray Dynamic Energy   = 52.944pJ per active subarray
+           |--- Row Decoder Dynamic Energy = 0.000pJ
+           |--- Senseamp Dynamic Energy    = 0.734pJ
+           |--- Precharge Dynamic Energy   = 0.378pJ
+     - Leakage Power = 64.242mW
+     |--- Non-H-Tree Leakage Power = 12.184mW
+     |--- Mat Leakage Power        = 813.409uW per mat
+     - Refresh Power = 0.000pW
+
+Finished!
