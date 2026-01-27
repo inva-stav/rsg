@@ -61,8 +61,8 @@ static const std::vector<std::string> OPT_TARGETS = {
     "ReadLatency",
     "WriteLatency",
     "ReadDynamicEnergy",
-    "WriteDynamicEnergy"
-    // "Full"  // optional: can be VERY slow and output parsing may differ
+    "WriteDynamicEnergy",
+    "Full"
 };
 
 // Capacity sweep values (preserves unit used by each template)
@@ -274,10 +274,13 @@ static std::string edit_cfg_text(
     std::regex cap_re(R"(^-Capacity\s+\((KB|MB)\):\s*([0-9]+(?:\.[0-9]+)?)\s*$)", std::regex::icase);
     std::regex cell_re(R"(^-MemoryCellInputFile:\s*(\S+)\s*$)", std::regex::icase);
     std::regex opt_re(R"(^-OptimizationTarget:\s*(\S+)\s*$)", std::regex::icase);
+    std::regex prune_re(R"(^-EnablePruning:\s*(\S+)\s*$)", std::regex::icase);
 
     auto lines = split_lines(original);
     bool did_cap = false;
     bool did_cell = false;
+    bool did_opt = false;
+    bool did_prune = false;
     bool did_opt = false;
 
     for (auto& raw : lines) {
@@ -305,10 +308,14 @@ static std::string edit_cfg_text(
         }
 
         if (std::regex_match(line, m, opt_re)) {
-            if (new_opt_target.has_value()) {
-                raw = "-OptimizationTarget: " + *new_opt_target;
-                did_opt = true;
-            }
+        raw = "-OptimizationTarget: Full";
+        did_opt = true;
+        continue;
+        }
+
+        if (std::regex_match(line, m, prune_re)) {
+            raw = "-EnablePruning: No";
+            did_prune = true;
             continue;
         }
 
@@ -324,6 +331,13 @@ static std::string edit_cfg_text(
     if (new_opt_target.has_value() && !did_opt) {
         throw std::runtime_error("Failed to replace OptimizationTarget line in cfg text");
     }
+    if (!did_opt) {
+    lines.push_back("-OptimizationTarget: Full");
+    }
+    if (!did_prune) {
+        lines.push_back("-EnablePruning: No");
+    }
+
 
     return join_lines(lines);
 }
@@ -566,6 +580,7 @@ struct Row {
     std::string read_dynamic_energy_pj;
     std::string write_dynamic_energy_pj;
     std::string leakage_power_uw;
+    std::string exploration_csv; // path to DESTINY full exploration csv (if any)
 
     std::string status;
     int return_code = 0;
@@ -606,6 +621,8 @@ int main() {
         fs::create_directories(logs_dir);
 
         fs::path csv_path = out_dir / CSV_NAME;
+        fs::path full_csvs_dir = out_dir / "full_csvs";
+        fs::create_directories(full_csvs_dir);
 
         // Resolve cfg templates that exist
         std::vector<fs::path> templates;
@@ -719,6 +736,23 @@ int main() {
                             bool ok = (rc == 0) && pm.finished;
 
                             if (!ok) failures++;
+                            
+                            fs::path produced_csv = tmp_cfg_path;
+                            produced_csv.replace_extension(".csv");
+
+                            std::string exploration_csv_rel = "";
+                            if (fs::exists(produced_csv)) {
+                                fs::path dst = full_csvs_dir / produced_csv.filename();
+                                std::error_code ec;
+                                fs::copy_file(produced_csv, dst,
+                                            fs::copy_options::overwrite_existing, ec);
+                                if (ec) {
+                                    std::cerr << "[WARN] Failed to copy exploration CSV: "
+                                            << ec.message() << "\n";
+                                } else {
+                                    exploration_csv_rel = fs::relative(dst, config_dir).string();
+                                }
+                            }
 
                             Row r;
                             r.template_cfg = template_cfg.filename().string();
@@ -742,6 +776,7 @@ int main() {
                             r.status = ok ? "ok" : "fail";
                             r.return_code = rc;
                             r.log_file = fs::relative(log_path, config_dir).string();
+                            r.exploration_csv = exploration_csv_rel;
 
                             rows.push_back(std::move(r));
 
@@ -779,8 +814,9 @@ int main() {
 
         // Header
         csv << "template_cfg,run_cfg,capacity_value,capacity_unit,cell_file_cfg,cell_file_used,"
-                "design_target,optimized_for,optimization_target_cfg,read_latency_ns,write_latency_ns,area_mm2,"
-                "read_dynamic_energy_pj,write_dynamic_energy_pj,leakage_power_uw,status,return_code,log_file\n";
+       "design_target,optimized_for,optimization_target_cfg,read_latency_ns,write_latency_ns,area_mm2,"
+       "read_dynamic_energy_pj,write_dynamic_energy_pj,leakage_power_uw,status,return_code,log_file,exploration_csv\n";
+
 
 
         auto esc = [](const std::string& s) -> std::string {
@@ -816,6 +852,7 @@ int main() {
                 << esc(r.status) << ","
                 << r.return_code << ","
                 << esc(r.log_file)
+                << esc(r.exploration_csv)
                 << "\n";
         }
 
