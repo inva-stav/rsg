@@ -436,6 +436,7 @@ static ParsedMetrics parse_stdout(const std::string& out) {
     std::regex using_cell_re(R"(^\s*Using cell file:\s*(\S+)\s*$)", std::regex::icase);
     std::regex optimized_re(R"(^\s*Optimized for:\s*(.+?)\s*$)", std::regex::icase);
     std::regex design_target_re(R"(^\s*Design Target:\s*(.+?)\s*$)", std::regex::icase);
+    std::regex csv_done_re(R"(^\s*.*\.csv\s+generated successfully!\s*$)", std::regex::icase);
 
     ParsedMetrics pm;
     std::smatch m;
@@ -460,9 +461,9 @@ static ParsedMetrics parse_stdout(const std::string& out) {
             pm.design_target = trim(std::string(m[1]));
             continue;
         }
-        if (std::regex_match(line, m, finished_re)) {
-            pm.finished = true;
-            continue;
+        if (std::regex_match(line, m, csv_done_re)) {
+        pm.finished = true;
+        continue;
         }
 
         // -------------------------
