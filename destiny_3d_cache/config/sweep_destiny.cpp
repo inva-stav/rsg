@@ -281,7 +281,6 @@ static std::string edit_cfg_text(
     bool did_cell = false;
     bool did_opt = false;
     bool did_prune = false;
-    bool did_opt = false;
 
     for (auto& raw : lines) {
         std::string line = trim(raw);
@@ -851,7 +850,7 @@ int main() {
                 << esc(r.leakage_power_uw) << ","
                 << esc(r.status) << ","
                 << r.return_code << ","
-                << esc(r.log_file)
+                << esc(r.log_file) << ","
                 << esc(r.exploration_csv)
                 << "\n";
         }
