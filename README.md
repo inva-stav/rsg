@@ -1,111 +1,205 @@
-# DESTINY Sweeper (Design Space Exploration Runner)
+# DESTINY Sweeper  
+*A reproducible design-space exploration runner for DESTINY*
 
-This project contains a sweep driver (`sweep_destiny.cpp`) that automates running **DESTINY** across many configurations and collecting results into a single CSV, while saving raw logs and (optionally) full design-space CSV outputs produced by DESTINY.
+This repository contains a sweep driver (`sweep_destiny.cpp`) that automates running **DESTINY** across large parameter spaces and aggregates results into a single CSV. It also preserves raw logs and (optionally) full design-space CSV outputs produced by DESTINY itself.
 
-The goal is to make large parameter sweeps reproducible:
-- Generate config variants from template `.cfg` files
-- Run DESTINY for each variant
-- Parse key metrics from stdout
-- Write an aggregated results file for downstream analysis (e.g., Pareto frontiers)
+The primary goal is to make large architectural sweeps **reproducible, auditable, and easy to analyze**.
+
+---
+
+## Features
+
+- Generate configuration variants from template `.cfg` files
+- Sweep memory capacity, optimization targets, and memory cell technologies
+- Run DESTINY automatically for each configuration
+- Parse key metrics directly from DESTINY stdout
+- Aggregate results into a single CSV for downstream analysis
+- Preserve raw logs, generated configs, and optional full exploration CSVs
+
+---
+
+## Repository Structure
+
+```text
+destiny_3d_cache/
+├── destiny                     # DESTINY binary (Linux)
+├── config/
+│   ├── sweep_destiny.cpp       # sweep driver
+│   ├── *.cfg                   # template configuration files
+│   ├── *.cell                  # memory cell technology files
+│   └── sweep_out/              # generated outputs (created at runtime)
+│       ├── destiny_sweep_results.csv
+│       ├── logs/
+│       ├── tmp_cfgs/
+│       └── full_csvs/
+````
 
 ---
 
 ## What the Sweeper Does
 
-For each template config listed in `CFG_TEMPLATES` in `sweep_destiny.cpp`, the sweeper:
+For each template configuration listed in `CFG_TEMPLATES` inside `sweep_destiny.cpp`, the sweeper:
 
 1. **Reads template metadata**
-   - Capacity unit (KB vs MB)
-   - `-MemoryCellInputFile`
-   - Other parameters remain as provided by the template
 
-2. **Generates temporary configs**
-   - Edits `-Capacity (KB|MB): ...`
-   - Optionally edits `-MemoryCellInputFile: ...` (if `SWAP_CELL_FILES=true`)
-   - Optionally edits `-OptimizationTarget: ...` (if `SWEEP_OPT_TARGETS=true`)
+   * Capacity units (KB vs MB)
+   * Memory cell input file
+   * All other parameters are preserved from the template
+
+2. **Generates temporary configurations**
+
+   * Updates capacity values
+   * Optionally swaps memory cell technology files
+   * Optionally sweeps optimization targets
 
 3. **Runs DESTINY**
-   - Executes `../destiny <relative_path_to_tmp_cfg>`
-   - Captures combined stdout/stderr for each run
 
-4. **Captures artifacts**
-   - Raw run logs: `config/sweep_out/logs/<tmp_cfg>.txt`
-   - Temporary cfgs: `config/sweep_out/tmp_cfgs/<tmp_cfg>.cfg`
-   - DESTINY-produced exploration CSVs: copied into `config/sweep_out/full_csvs/` when present
-   - Aggregated metrics CSV: `config/sweep_out/destiny_sweep_results.csv`
+   * Executes `../destiny <relative_path_to_tmp_cfg>`
+   * Captures combined stdout/stderr
+
+4. **Collects artifacts**
+
+   * Raw logs for every run
+   * Generated temporary `.cfg` files
+   * Optional full design-space CSVs produced by DESTINY
+   * A single aggregated CSV with parsed metrics
 
 ---
 
 ## Output Layout
 
-All outputs land under:
-destiny_3d_cache/config/sweep_out/
-├── destiny_sweep_results.csv # aggregated results across runs
-├── logs/ # raw stdout logs per run
-├── tmp_cfgs/ # generated cfgs per run
-└── full_csvs/ # copied DESTINY full exploration CSVs (if produced)
+All outputs are written under:
 
-
-### Aggregated CSV Contents
-
-`destiny_sweep_results.csv` includes one row per run, with columns such as:
-
-- template cfg name / generated cfg name
-- capacity value + units
-- cell file specified vs cell file actually used
-- design target / optimized-for metadata (from DESTINY output)
-- parsed metrics:
-  - read latency (ns), write latency (ns)
-  - area (mm^2)
-  - read/write dynamic energy (pJ)
-  - leakage power (uW)
-- status, return code, log file path
-- optional `exploration_csv` path if a full exploration CSV was produced
+```text
+config/sweep_out/
+├── destiny_sweep_results.csv   # aggregated metrics across all runs
+├── logs/                       # raw stdout/stderr per run
+├── tmp_cfgs/                   # generated configuration files
+└── full_csvs/                  # DESTINY exploration CSVs (if produced)
+```
 
 ---
 
-## Reproducing the Results (End-to-End)
+## Aggregated Results Format
 
-### 0) Prerequisites
+Each row in `destiny_sweep_results.csv` corresponds to **one DESTINY run** and includes:
 
-You need:
-- A working **Linux** environment (e.g., the RSG VM)
-- A **Linux-built** DESTINY binary at:
-destiny_3d_cache/destiny
-- Template cfgs and `.cell` files in:
-destiny_3d_cache/config/
+* Template config name and generated config name
+* Capacity value and units
+* Memory cell file specified vs. actually used
+* Optimization target metadata
+* Parsed performance metrics:
 
-> If you see `Exec format error`, your `destiny` binary was built for the wrong architecture (common if built on macOS). Rebuild DESTINY on the VM.
+  * Read latency (ns)
+  * Write latency (ns)
+  * Area (mm²)
+  * Read/write dynamic energy (pJ)
+  * Leakage power (µW)
+* Exit status, return code, and log file path
+* Optional path to a full exploration CSV (if generated)
 
-### 1) Build DESTINY (if needed)
+This format is designed to be directly usable for:
 
-From `destiny_3d_cache/` (exact commands depend on the project’s build system):
-- Either run the provided build script / Makefile if available
-- Or build using the project’s documented instructions
+* Pareto frontier analysis
+* Design trade-off visualization
+* Batch post-processing in Python, MATLAB, or R
 
-Verify:
+---
+
+## Quick Start
+
+### Prerequisites
+
+* Linux environment
+* A **Linux-built** DESTINY binary
+* C++17-compatible compiler (GCC recommended)
+
+> **Important**
+> If you see `Exec format error`, your DESTINY binary was built for the wrong architecture (e.g., macOS). DESTINY must be built on Linux.
+
+---
+
+### 1) Build DESTINY
+
+Follow the official DESTINY build instructions for your environment.
+
+Verify the binary:
+
 ```bash
 file destiny
-# should say: ELF 64-bit LSB executable ... x86-64 (or appropriate Linux arch)
+```
 
-**### 2) Build the Sweeper**
+You should see output similar to:
 
-From destiny_3d_cache/config/:
+```text
+ELF 64-bit LSB executable, x86-64
+```
+
+---
+
+### 2) Build the Sweeper
+
+From the `config/` directory:
+
+```bash
 g++ -std=gnu++17 -O2 -Wall sweep_destiny.cpp -o sweep_destiny
-If your environment requires it (older GCC toolchains):
+```
+
+If required by older toolchains:
+
+```bash
 g++ -std=gnu++17 -O2 -Wall sweep_destiny.cpp -o sweep_destiny -lstdc++fs
+```
 
-**3) Configure the Sweep**
-Open sweep_destiny.cpp and edit the USER SETTINGS section:
+---
 
-CFG_TEMPLATES: which templates to use
-CAPACITIES_KB, CAPACITIES_MB: what capacity sweep to run
-SWEEP_OPT_TARGETS + OPT_TARGETS: optimization target sweep
-SWAP_CELL_FILES: whether to also sweep across .cell technologies
-MAX_FAILURES: stop early after repeated failures (useful during testing)
+### 3) Configure the Sweep
 
-**4) Run the Sweep**
-Important: run from config/ so DESTINY resolves .cell files correctly.
+Edit the **USER SETTINGS** section of `sweep_destiny.cpp`:
+
+* `CFG_TEMPLATES` — template `.cfg` files to sweep
+* `CAPACITIES_KB`, `CAPACITIES_MB` — capacity values
+* `SWEEP_OPT_TARGETS`, `OPT_TARGETS` — optimization target sweep
+* `SWAP_CELL_FILES` — enable sweeping across `.cell` technologies
+* `MAX_FAILURES` — abort after repeated failures (useful for testing)
+
+---
+
+### 4) Run
+
+Run the sweeper **from the `config/` directory** so DESTINY resolves relative paths correctly:
+
+```bash
 cd destiny_3d_cache/config
 ./sweep_destiny
+```
+
+Results will appear in:
+
+```bash
 ls sweep_out/
+```
+
+---
+
+## Design Notes
+
+* The sweeper assumes DESTINY resolves `.cell` files relative to the working directory.
+* All generated files are kept for reproducibility and debugging.
+* Failures are recorded in the aggregated CSV rather than silently skipped.
+* The driver is intentionally implemented as a single self-contained C++ file to simplify deployment on remote clusters or VMs.
+
+---
+
+## Limitations
+
+* This tool does not modify DESTINY internals.
+* Parsing relies on stable DESTINY stdout formatting.
+* Parallel execution is not currently supported (single-process sweep).
+
+---
+
+## License
+
+This repository contains **only the sweep driver**.
+DESTINY itself is subject to its own license and is **not redistributed** here.
