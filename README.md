@@ -142,7 +142,7 @@ ELF 64-bit LSB executable, x86-64
 From the `config/` directory:
 
 ```bash
-g++ -std=gnu++17 -O2 -Wall sweep_destiny.cpp -o sweep_destiny
+g++ -std=gnu++17 -O2 -Wall ../../sweeps/sweep_destiny.cpp -o sweep_destiny
 ```
 
 If required by older toolchains:
