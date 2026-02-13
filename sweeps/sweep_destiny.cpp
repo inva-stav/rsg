@@ -43,11 +43,11 @@
 namespace fs = std::filesystem;
 
 // ----------------------------
-// USER SETTINGS (EDIT THESE)
+// DEFAULT SETTINGS (overridden by config file when provided)
 // ----------------------------
 
 // Which cfg templates to sweep (relative to config/)
-static const std::vector<std::string> CFG_TEMPLATES = {
+static std::vector<std::string> CFG_TEMPLATES = {
     "sample_2D_eDRAM.cfg",
     "sample_3D_eDRAM.cfg",
     "sample_2DReRAM.cfg",
@@ -58,11 +58,11 @@ static const std::vector<std::string> CFG_TEMPLATES = {
     "sample_SRAM_4layer.cfg",
 };
 // Optimization target sweep
-static const bool SWEEP_OPT_TARGETS = true;
+static bool SWEEP_OPT_TARGETS = true;
 
 // Use these exact strings as DESTINY expects in cfg.
 // (You can add/remove; start small if runtime blows up.)
-static const std::vector<std::string> OPT_TARGETS = {
+static std::vector<std::string> OPT_TARGETS = {
     "WriteEDP",
     "ReadLatency",
     "WriteLatency",
@@ -72,24 +72,24 @@ static const std::vector<std::string> OPT_TARGETS = {
 };
 
 // Capacity sweep values (preserves unit used by each template)
-static const std::vector<double> CAPACITIES_KB = {32, 64, 128, 256, 512, 1024};
-static const std::vector<double> CAPACITIES_MB = {1, 2, 4, 8};
+static std::vector<double> CAPACITIES_KB = {32, 64, 128, 256, 512, 1024};
+static std::vector<double> CAPACITIES_MB = {1, 2, 4, 8};
 
 // If you ALSO want to sweep technology by swapping MemoryCellInputFile
-static const bool SWAP_CELL_FILES = false;
+static bool SWAP_CELL_FILES = false;
 
 // If SWAP_CELL_FILES=true, list cell files here; if empty, auto-include all *.cell in config/
-static const std::vector<std::string> CELL_FILES_TO_TRY = {};
+static std::vector<std::string> CELL_FILES_TO_TRY = {};
 
 // DESTINY binary path relative to config/
-static const std::string DESTINY_REL_PATH = "../destiny";
+static std::string DESTINY_REL_PATH = "../destiny";
 
 // Output locations (relative to config/)
-static const std::string OUT_DIR = "sweep_out";
-static const std::string CSV_NAME = "destiny_sweep_results.csv";
+static std::string OUT_DIR = "sweep_out";
+static std::string CSV_NAME = "destiny_sweep_results.csv";
 
 // Safety: stop after N failures? (std::nullopt = never stop)
-static const std::optional<int> MAX_FAILURES = 10;
+static std::optional<int> MAX_FAILURES = 10;
 
 // ----------------------------
 // Helpers
@@ -217,6 +217,98 @@ static double power_to_uw(double val, const std::string& unit_raw) {
     if (unit == "mw") return val * 1e3;
     if (unit == "w")  return val * 1e6;
     throw std::runtime_error("Unknown power unit: " + unit_raw);
+}
+
+// ----------------------------
+// Config file loader
+// ----------------------------
+//
+// Simple line-based format.  Keys that accept lists use repeated lines:
+//
+//   # comment
+//   template: sample_2D_eDRAM.cfg
+//   template: sample_3D_eDRAM.cfg
+//   capacity_kb: 32
+//   capacity_kb: 64
+//   capacity_mb: 1
+//   sweep_opt_targets: true
+//   opt_target: WriteEDP
+//   opt_target: Full
+//   swap_cell_files: false
+//   cell_file: some.cell
+//   destiny_path: ../destiny
+//   output_dir: sweep_out
+//   csv_name: destiny_sweep_results.csv
+//   max_failures: 10          # or "none" for unlimited
+
+static void load_config(const fs::path& path) {
+    auto text = read_file(path);
+    auto lines = split_lines(text);
+
+    bool has_templates = false, has_kb = false, has_mb = false;
+    bool has_opt = false, has_cells = false;
+
+    auto to_lower = [](std::string s) {
+        std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+        return s;
+    };
+
+    for (const auto& raw : lines) {
+        std::string line = trim(raw);
+        if (line.empty() || line[0] == '#') continue;
+
+        auto colon = line.find(':');
+        if (colon == std::string::npos) continue;
+
+        std::string key = to_lower(trim(line.substr(0, colon)));
+        std::string val = trim(line.substr(colon + 1));
+        if (val.empty()) continue;
+
+        if (key == "template") {
+            if (!has_templates) { CFG_TEMPLATES.clear(); has_templates = true; }
+            CFG_TEMPLATES.push_back(val);
+        }
+        else if (key == "capacity_kb") {
+            if (!has_kb) { CAPACITIES_KB.clear(); has_kb = true; }
+            CAPACITIES_KB.push_back(std::stod(val));
+        }
+        else if (key == "capacity_mb") {
+            if (!has_mb) { CAPACITIES_MB.clear(); has_mb = true; }
+            CAPACITIES_MB.push_back(std::stod(val));
+        }
+        else if (key == "sweep_opt_targets") {
+            SWEEP_OPT_TARGETS = (to_lower(val) == "true" || val == "1");
+        }
+        else if (key == "opt_target") {
+            if (!has_opt) { OPT_TARGETS.clear(); has_opt = true; }
+            OPT_TARGETS.push_back(val);
+        }
+        else if (key == "swap_cell_files") {
+            SWAP_CELL_FILES = (to_lower(val) == "true" || val == "1");
+        }
+        else if (key == "cell_file") {
+            if (!has_cells) { CELL_FILES_TO_TRY.clear(); has_cells = true; }
+            CELL_FILES_TO_TRY.push_back(val);
+        }
+        else if (key == "destiny_path") {
+            DESTINY_REL_PATH = val;
+        }
+        else if (key == "output_dir") {
+            OUT_DIR = val;
+        }
+        else if (key == "csv_name") {
+            CSV_NAME = val;
+        }
+        else if (key == "max_failures") {
+            if (to_lower(val) == "none") MAX_FAILURES = std::nullopt;
+            else MAX_FAILURES = std::stoi(val);
+        }
+        else {
+            std::cerr << "[WARN] Unknown config key: " << key << "\n";
+        }
+    }
+
+    std::cout << "[config] Loaded settings from " << path.string() << "\n";
 }
 
 // ----------------------------
@@ -669,8 +761,18 @@ static std::vector<size_t> pareto_front_indices(const std::vector<const Row*>& r
 // Main
 // ----------------------------
 
-int main() {
+int main(int argc, char* argv[]) {
     try {
+        // Optional config file: ./sweep_destiny [config_file]
+        if (argc > 1) {
+            fs::path cfg_path(argv[1]);
+            if (!fs::exists(cfg_path)) {
+                std::cerr << "[ERROR] Config file not found: " << cfg_path << "\n";
+                return 2;
+            }
+            load_config(cfg_path);
+        }
+
         // Must run from config/
         fs::path config_dir = fs::current_path();
 
