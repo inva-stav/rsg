@@ -14,7 +14,10 @@
 //     Read Latency (ns), Write Latency (ns), Total Area (mm^2),
 //     Read Dynamic Energy (pJ), Write Dynamic Energy (pJ),
 //     Leakage Power (uW)
-// - Writes CSV + saves raw logs per run
+// - Writes combined CSV + per-capacity Pareto-filtered CSVs + saves raw logs per run
+//   All numeric columns are unit-free; units documented in column names:
+//     read_latency(ns), write_latency(ns), area(mm2),
+//     read_dynamic_energy(pJ), write_dynamic_energy(pJ), leakage_power(uW)
 //
 // Notes:
 // - DESTINY resolves MemoryCellInputFile relative to the working directory,
@@ -22,11 +25,14 @@
 
 #include <algorithm>
 #include <cerrno>
+#include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <optional>
 #include <regex>
 #include <sstream>
@@ -37,11 +43,11 @@
 namespace fs = std::filesystem;
 
 // ----------------------------
-// USER SETTINGS (EDIT THESE)
+// DEFAULT SETTINGS (overridden by config file when provided)
 // ----------------------------
 
 // Which cfg templates to sweep (relative to config/)
-static const std::vector<std::string> CFG_TEMPLATES = {
+static std::vector<std::string> CFG_TEMPLATES = {
     "sample_2D_eDRAM.cfg",
     "sample_3D_eDRAM.cfg",
     "sample_2DReRAM.cfg",
@@ -52,11 +58,11 @@ static const std::vector<std::string> CFG_TEMPLATES = {
     "sample_SRAM_4layer.cfg",
 };
 // Optimization target sweep
-static const bool SWEEP_OPT_TARGETS = true;
+static bool SWEEP_OPT_TARGETS = true;
 
 // Use these exact strings as DESTINY expects in cfg.
 // (You can add/remove; start small if runtime blows up.)
-static const std::vector<std::string> OPT_TARGETS = {
+static std::vector<std::string> OPT_TARGETS = {
     "WriteEDP",
     "ReadLatency",
     "WriteLatency",
@@ -66,24 +72,24 @@ static const std::vector<std::string> OPT_TARGETS = {
 };
 
 // Capacity sweep values (preserves unit used by each template)
-static const std::vector<double> CAPACITIES_KB = {32, 64, 128, 256, 512, 1024};
-static const std::vector<double> CAPACITIES_MB = {1, 2, 4, 8};
+static std::vector<double> CAPACITIES_KB = {32, 64, 128, 256, 512, 1024};
+static std::vector<double> CAPACITIES_MB = {1, 2, 4, 8};
 
 // If you ALSO want to sweep technology by swapping MemoryCellInputFile
-static const bool SWAP_CELL_FILES = false;
+static bool SWAP_CELL_FILES = false;
 
 // If SWAP_CELL_FILES=true, list cell files here; if empty, auto-include all *.cell in config/
-static const std::vector<std::string> CELL_FILES_TO_TRY = {};
+static std::vector<std::string> CELL_FILES_TO_TRY = {};
 
 // DESTINY binary path relative to config/
-static const std::string DESTINY_REL_PATH = "../destiny";
+static std::string DESTINY_REL_PATH = "../destiny";
 
 // Output locations (relative to config/)
-static const std::string OUT_DIR = "sweep_out";
-static const std::string CSV_NAME = "destiny_sweep_results.csv";
+static std::string OUT_DIR = "sweep_out";
+static std::string CSV_NAME = "destiny_sweep_results.csv";
 
 // Safety: stop after N failures? (std::nullopt = never stop)
-static const std::optional<int> MAX_FAILURES = 10;
+static std::optional<int> MAX_FAILURES = 10;
 
 // ----------------------------
 // Helpers
@@ -214,6 +220,98 @@ static double power_to_uw(double val, const std::string& unit_raw) {
 }
 
 // ----------------------------
+// Config file loader
+// ----------------------------
+//
+// Simple line-based format.  Keys that accept lists use repeated lines:
+//
+//   # comment
+//   template: sample_2D_eDRAM.cfg
+//   template: sample_3D_eDRAM.cfg
+//   capacity_kb: 32
+//   capacity_kb: 64
+//   capacity_mb: 1
+//   sweep_opt_targets: true
+//   opt_target: WriteEDP
+//   opt_target: Full
+//   swap_cell_files: false
+//   cell_file: some.cell
+//   destiny_path: ../destiny
+//   output_dir: sweep_out
+//   csv_name: destiny_sweep_results.csv
+//   max_failures: 10          # or "none" for unlimited
+
+static void load_config(const fs::path& path) {
+    auto text = read_file(path);
+    auto lines = split_lines(text);
+
+    bool has_templates = false, has_kb = false, has_mb = false;
+    bool has_opt = false, has_cells = false;
+
+    auto to_lower = [](std::string s) {
+        std::transform(s.begin(), s.end(), s.begin(), ::tolower);
+        return s;
+    };
+
+    for (const auto& raw : lines) {
+        std::string line = trim(raw);
+        if (line.empty() || line[0] == '#') continue;
+
+        auto colon = line.find(':');
+        if (colon == std::string::npos) continue;
+
+        std::string key = to_lower(trim(line.substr(0, colon)));
+        std::string val = trim(line.substr(colon + 1));
+        if (val.empty()) continue;
+
+        if (key == "template") {
+            if (!has_templates) { CFG_TEMPLATES.clear(); has_templates = true; }
+            CFG_TEMPLATES.push_back(val);
+        }
+        else if (key == "capacity_kb") {
+            if (!has_kb) { CAPACITIES_KB.clear(); has_kb = true; }
+            CAPACITIES_KB.push_back(std::stod(val));
+        }
+        else if (key == "capacity_mb") {
+            if (!has_mb) { CAPACITIES_MB.clear(); has_mb = true; }
+            CAPACITIES_MB.push_back(std::stod(val));
+        }
+        else if (key == "sweep_opt_targets") {
+            SWEEP_OPT_TARGETS = (to_lower(val) == "true" || val == "1");
+        }
+        else if (key == "opt_target") {
+            if (!has_opt) { OPT_TARGETS.clear(); has_opt = true; }
+            OPT_TARGETS.push_back(val);
+        }
+        else if (key == "swap_cell_files") {
+            SWAP_CELL_FILES = (to_lower(val) == "true" || val == "1");
+        }
+        else if (key == "cell_file") {
+            if (!has_cells) { CELL_FILES_TO_TRY.clear(); has_cells = true; }
+            CELL_FILES_TO_TRY.push_back(val);
+        }
+        else if (key == "destiny_path") {
+            DESTINY_REL_PATH = val;
+        }
+        else if (key == "output_dir") {
+            OUT_DIR = val;
+        }
+        else if (key == "csv_name") {
+            CSV_NAME = val;
+        }
+        else if (key == "max_failures") {
+            if (to_lower(val) == "none") MAX_FAILURES = std::nullopt;
+            else MAX_FAILURES = std::stoi(val);
+        }
+        else {
+            std::cerr << "[WARN] Unknown config key: " << key << "\n";
+        }
+    }
+
+    std::cout << "[config] Loaded settings from " << path.string() << "\n";
+}
+
+// ----------------------------
 // Parsing / editing
 // ----------------------------
 
@@ -307,9 +405,11 @@ static std::string edit_cfg_text(
         }
 
         if (std::regex_match(line, m, opt_re)) {
-        raw = "-OptimizationTarget: Full";
-        did_opt = true;
-        continue;
+            if (new_opt_target.has_value()) {
+                raw = "-OptimizationTarget: " + *new_opt_target;
+            }
+            did_opt = true;
+            continue;
         }
 
         if (std::regex_match(line, m, prune_re)) {
@@ -327,11 +427,9 @@ static std::string edit_cfg_text(
         throw std::runtime_error("Failed to replace MemoryCellInputFile line in cfg text");
     }
 
-    if (new_opt_target.has_value() && !did_opt) {
-        throw std::runtime_error("Failed to replace OptimizationTarget line in cfg text");
-    }
     if (!did_opt) {
-    lines.push_back("-OptimizationTarget: Full");
+        lines.push_back("-OptimizationTarget: " +
+                         (new_opt_target.has_value() ? *new_opt_target : std::string("Full")));
     }
     if (!did_prune) {
         lines.push_back("-EnablePruning: No");
@@ -573,6 +671,7 @@ struct Row {
     std::string design_target;
     std::string optimized_for;
     std::string optimization_target_cfg;
+    std::string memory_type;
 
     std::string read_latency_ns;
     std::string write_latency_ns;
@@ -598,12 +697,82 @@ static std::string opt_to_string(const std::optional<std::string>& v) {
     return *v;
 }
 
+// Extract memory technology name from template filename.
+// e.g. "sample_2D_eDRAM.cfg" -> "2D_eDRAM", "sample_SRAM_4layer.cfg" -> "SRAM_4layer"
+static std::string extract_memory_type(const std::string& template_name) {
+    std::string name = template_name;
+    if (name.rfind("sample_", 0) == 0) name = name.substr(7);
+    auto dot = name.rfind(".cfg");
+    if (dot != std::string::npos) name = name.substr(0, dot);
+    return name;
+}
+
+// Build a human-readable capacity key like "64KB" or "2MB".
+static std::string capacity_key(double val, const std::string& unit) {
+    int ival = static_cast<int>(val);
+    if (static_cast<double>(ival) == val)
+        return std::to_string(ival) + unit;
+    std::ostringstream oss;
+    oss << val << unit;
+    return oss.str();
+}
+
+// Pareto-front filter (all objectives minimised).
+// Returns indices (into `rows`) of non-dominated rows that have complete metrics.
+static std::vector<size_t> pareto_front_indices(const std::vector<const Row*>& rows) {
+    static constexpr int N_OBJ = 6; // read_lat, write_lat, area, read_en, write_en, leak_pow
+    struct Point { size_t idx; double m[N_OBJ]; };
+
+    std::vector<Point> pts;
+    for (size_t i = 0; i < rows.size(); i++) {
+        const auto& r = *rows[i];
+        if (r.status != "ok") continue;
+        if (r.read_latency_ns.empty() || r.write_latency_ns.empty() ||
+            r.area_mm2.empty() || r.read_dynamic_energy_pj.empty() ||
+            r.write_dynamic_energy_pj.empty() || r.leakage_power_uw.empty()) continue;
+        pts.push_back({i, {
+            std::stod(r.read_latency_ns),
+            std::stod(r.write_latency_ns),
+            std::stod(r.area_mm2),
+            std::stod(r.read_dynamic_energy_pj),
+            std::stod(r.write_dynamic_energy_pj),
+            std::stod(r.leakage_power_uw)
+        }});
+    }
+
+    std::vector<size_t> result;
+    for (size_t i = 0; i < pts.size(); i++) {
+        bool dominated = false;
+        for (size_t j = 0; j < pts.size() && !dominated; j++) {
+            if (i == j) continue;
+            bool all_leq = true, any_lt = false;
+            for (int k = 0; k < N_OBJ; k++) {
+                if (pts[j].m[k] > pts[i].m[k]) { all_leq = false; break; }
+                if (pts[j].m[k] < pts[i].m[k]) any_lt = true;
+            }
+            if (all_leq && any_lt) dominated = true;
+        }
+        if (!dominated) result.push_back(pts[i].idx);
+    }
+    return result;
+}
+
 // ----------------------------
 // Main
 // ----------------------------
 
-int main() {
+int main(int argc, char* argv[]) {
     try {
+        // Optional config file: ./sweep_destiny [config_file]
+        if (argc > 1) {
+            fs::path cfg_path(argv[1]);
+            if (!fs::exists(cfg_path)) {
+                std::cerr << "[ERROR] Config file not found: " << cfg_path << "\n";
+                return 2;
+            }
+            load_config(cfg_path);
+        }
+
         // Must run from config/
         fs::path config_dir = fs::current_path();
 
@@ -764,7 +933,7 @@ int main() {
                             r.design_target = opt_to_string(pm.design_target);
                             r.optimized_for = opt_to_string(pm.optimized_for);
                             r.optimization_target_cfg = SWEEP_OPT_TARGETS ? opt_target : "";
-
+                            r.memory_type = extract_memory_type(r.template_cfg);
 
                             r.read_latency_ns = opt_to_string(pm.read_latency_ns);
                             r.write_latency_ns = opt_to_string(pm.write_latency_ns);
@@ -800,27 +969,16 @@ int main() {
                 if (stop_requested) break;
             }
         
-        // Write CSV
+        // -------------------------------------------------
+        // Write CSVs
+        // -------------------------------------------------
         if (rows.empty()) {
             std::cerr << "[WARN] No rows produced.\n";
             return 0;
         }
 
-        std::ofstream csv(csv_path);
-        if (!csv) {
-            std::cerr << "[ERROR] Cannot write CSV: " << csv_path << "\n";
-            return 2;
-        }
-
-        // Header
-        csv << "template_cfg,run_cfg,capacity_value,capacity_unit,cell_file_cfg,cell_file_used,"
-       "design_target,optimized_for,optimization_target_cfg,read_latency_ns,write_latency_ns,area_mm2,"
-       "read_dynamic_energy_pj,write_dynamic_energy_pj,leakage_power_uw,status,return_code,log_file,exploration_csv\n";
-
-
-
+        // RFC 4180 CSV field escaping.
         auto esc = [](const std::string& s) -> std::string {
-            // CSV escape
             bool need = s.find_first_of(",\"\n\r") != std::string::npos;
             if (!need) return s;
             std::string out = "\"";
@@ -832,33 +990,90 @@ int main() {
             return out;
         };
 
-        for (const auto& r : rows) {
-            csv
-                << esc(r.template_cfg) << ","
-                << esc(r.run_cfg) << ","
-                << r.capacity_value << ","
-                << esc(r.capacity_unit) << ","
-                << esc(r.cell_file_cfg) << ","
-                << esc(r.cell_file_used) << ","
-                << esc(r.design_target) << ","
-                << esc(r.optimized_for) << ","
-                << esc(r.optimization_target_cfg) << ","
-                << esc(r.read_latency_ns) << ","
-                << esc(r.write_latency_ns) << ","
-                << esc(r.area_mm2) << ","
-                << esc(r.read_dynamic_energy_pj) << ","
-                << esc(r.write_dynamic_energy_pj) << ","
-                << esc(r.leakage_power_uw) << ","
-                << esc(r.status) << ","
-                << r.return_code << ","
-                << esc(r.log_file) << ","
-                << esc(r.exploration_csv)
-                << "\n";
+        // Helper: write one row to a stream.
+        // Units are purely numeric (no "pW" etc.) — units are documented in column names:
+        //   read_latency(ns), write_latency(ns), area(mm2),
+        //   read_dynamic_energy(pJ), write_dynamic_energy(pJ), leakage_power(uW)
+        auto write_row = [&](std::ostream& os, const Row& r) {
+            os << esc(r.memory_type) << ","
+               << esc(r.template_cfg) << ","
+               << esc(r.run_cfg) << ","
+               << r.capacity_value << ","
+               << esc(r.capacity_unit) << ","
+               << esc(r.cell_file_cfg) << ","
+               << esc(r.cell_file_used) << ","
+               << esc(r.design_target) << ","
+               << esc(r.optimized_for) << ","
+               << esc(r.optimization_target_cfg) << ","
+               << esc(r.read_latency_ns) << ","
+               << esc(r.write_latency_ns) << ","
+               << esc(r.area_mm2) << ","
+               << esc(r.read_dynamic_energy_pj) << ","
+               << esc(r.write_dynamic_energy_pj) << ","
+               << esc(r.leakage_power_uw) << ","
+               << esc(r.status) << ","
+               << r.return_code << ","
+               << esc(r.log_file) << ","
+               << esc(r.exploration_csv)
+               << "\n";
+        };
+
+        static const std::string FULL_HEADER =
+            "memory_type,template_cfg,run_cfg,capacity_value,capacity_unit,"
+            "cell_file_cfg,cell_file_used,design_target,optimized_for,"
+            "optimization_target_cfg,read_latency(ns),write_latency(ns),"
+            "area(mm2),read_dynamic_energy(pJ),write_dynamic_energy(pJ),"
+            "leakage_power(uW),status,return_code,log_file,exploration_csv\n";
+
+        // Per-capacity header (same columns, capacity is redundant but kept
+        // so files are self-contained and easy to merge later).
+        static const std::string& PER_CAP_HEADER = FULL_HEADER;
+
+        // 1) Write full combined CSV (all rows, all capacities)
+        {
+            std::ofstream csv(csv_path);
+            if (!csv) {
+                std::cerr << "[ERROR] Cannot write CSV: " << csv_path << "\n";
+                return 2;
+            }
+            csv << FULL_HEADER;
+            for (const auto& r : rows) write_row(csv, r);
         }
 
-        std::cout << "\nDone. Wrote " << rows.size() << " rows to: " << csv_path.string() << "\n"
-                  << "Logs saved under: " << (fs::current_path() / OUT_DIR / "logs").string() << "\n"
-                  << "Temp cfgs saved under: " << (fs::current_path() / OUT_DIR / "tmp_cfgs").string() << "\n";
+        // 2) Group rows by capacity key
+        std::map<std::string, std::vector<const Row*>> by_capacity;
+        for (const auto& r : rows) {
+            by_capacity[capacity_key(r.capacity_value, r.capacity_unit)].push_back(&r);
+        }
+
+        // 3) Write per-capacity Pareto-filtered CSVs
+        size_t total_pareto = 0;
+        for (const auto& [cap_key, group] : by_capacity) {
+            auto pareto_idx = pareto_front_indices(group);
+            total_pareto += pareto_idx.size();
+
+            fs::path per_cap_path = out_dir / ("pareto_" + cap_key + ".csv");
+            std::ofstream pcsv(per_cap_path);
+            if (!pcsv) {
+                std::cerr << "[WARN] Cannot write per-capacity CSV: " << per_cap_path << "\n";
+                continue;
+            }
+            pcsv << PER_CAP_HEADER;
+            for (size_t idx : pareto_idx) write_row(pcsv, *group[idx]);
+
+            std::cout << "  Pareto " << cap_key << ": " << pareto_idx.size()
+                      << " / " << group.size() << " designs -> "
+                      << fs::relative(per_cap_path, config_dir).string() << "\n";
+        }
+
+        std::cout << "\nDone. Wrote " << rows.size() << " total rows to: "
+                  << csv_path.string() << "\n"
+                  << "  Pareto-filtered per-capacity CSVs: " << total_pareto
+                  << " designs across " << by_capacity.size() << " capacity bins\n"
+                  << "Logs saved under: "
+                  << (fs::current_path() / OUT_DIR / "logs").string() << "\n"
+                  << "Temp cfgs saved under: "
+                  << (fs::current_path() / OUT_DIR / "tmp_cfgs").string() << "\n";
 
         return 0;
    
