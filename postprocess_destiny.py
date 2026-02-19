@@ -299,7 +299,9 @@ def process_csvs(
         pareto_dir.mkdir(parents=True, exist_ok=True)
 
     # Stage 1: discover all CSVs
-    csv_files = sorted(csv_dir.glob("*.csv"))
+    csv_files = sorted(csv_dir.glob("*__Full.csv"))[:20]
+    print(f"[INFO] Testing subset: {len(csv_files)} Full CSVs")
+
     if not csv_files:
         print("[ERROR] No CSV files found.", file=sys.stderr)
         sys.exit(1)
@@ -345,29 +347,40 @@ def process_csvs(
         print("\nPareto pruning skipped (--no-pareto).")
         return
 
-    missing = [m for m in pareto_metrics if m not in all_data.columns]
-    if missing:
-        print(
-            f"[WARN] Cannot run Pareto pruning. Missing columns: {missing}",
-            file=sys.stderr,
-        )
-        print(f"  Available columns: {list(all_data.columns)}", file=sys.stderr)
+    # missing = [m for m in pareto_metrics if m not in all_data.columns]
+    # if missing:
+    #     print(
+    #         f"[WARN] Cannot run Pareto pruning. Missing columns: {missing}",
+    #         file=sys.stderr,
+    #     )
+    #     print(f"  Available columns: {list(all_data.columns)}", file=sys.stderr)
+    #     return
+
+    available_metrics = [m for m in pareto_metrics if m in all_data.columns]
+    missing_metrics = [m for m in pareto_metrics if m not in all_data.columns]
+
+    if missing_metrics:
+        print(f"[WARN] Some Pareto metrics missing globally, will ignore: {missing_metrics}", file=sys.stderr)
+
+    if len(available_metrics) == 0:
+        print("[WARN] No Pareto metrics available. Skipping Pareto pruning.", file=sys.stderr)
         return
 
+
     # Coerce metric columns to numeric
-    for m in pareto_metrics:
+    for m in available_metrics:
         all_data[m] = pd.to_numeric(all_data[m], errors="coerce")
 
     all_pareto: list[pd.DataFrame] = []
     for cap in capacities:
         group = all_data[all_data["_capacity"] == cap].copy()
-        valid = group.dropna(subset=pareto_metrics)
+        valid = group.dropna(subset=available_metrics)
 
         if valid.empty:
             print(f"  {cap:>8s}: no valid rows for Pareto pruning")
             continue
 
-        costs = valid[pareto_metrics].values
+        costs = valid[available_metrics].values
         mask = paretoset(costs, sense=pareto_senses)
         pareto = valid[mask].copy()
 
@@ -387,7 +400,7 @@ def process_csvs(
         combined_pareto.to_csv(pareto_all_path, index=False)
         print(f"\nWrote {len(combined_pareto)} Pareto-optimal rows to {pareto_dir}/")
 
-    print(f"\nPareto metrics used (all minimized): {pareto_metrics}")
+    print(f"\nPareto metrics used (all minimized): {available_metrics}")
 
 
 # ---------------------------------------------------------------------------

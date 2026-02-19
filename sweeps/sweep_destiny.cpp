@@ -43,13 +43,13 @@ namespace fs = std::filesystem;
 // Which cfg templates to sweep (relative to config/)
 static const std::vector<std::string> CFG_TEMPLATES = {
     "sample_2D_eDRAM.cfg",
-    "sample_3D_eDRAM.cfg",
-    "sample_2DReRAM.cfg",
-    "sample_3DReRAM.cfg",
-    "sample_PCRAM.cfg",
-    "sample_STTRAM.cfg",
-    "sample_SRAM_2layer.cfg",
-    "sample_SRAM_4layer.cfg",
+    // "sample_3D_eDRAM.cfg",
+    // "sample_2DReRAM.cfg",
+    // "sample_3DReRAM.cfg",
+    // "sample_PCRAM.cfg",
+    // "sample_STTRAM.cfg",
+    // "sample_SRAM_2layer.cfg",
+    // "sample_SRAM_4layer.cfg",
 };
 // Optimization target sweep
 static const bool SWEEP_OPT_TARGETS = true;
@@ -66,8 +66,10 @@ static const std::vector<std::string> OPT_TARGETS = {
 };
 
 // Capacity sweep values (preserves unit used by each template)
-static const std::vector<double> CAPACITIES_KB = {32, 64, 128, 256, 512, 1024};
-static const std::vector<double> CAPACITIES_MB = {1, 2, 4, 8};
+static const std::vector<double> CAPACITIES_KB = {64};
+static const std::vector<double> CAPACITIES_MB = {};
+// static const std::vector<double> CAPACITIES_KB = {32, 64, 128, 256, 512, 1024};
+// static const std::vector<double> CAPACITIES_MB = {1, 2, 4, 8};
 
 // If you ALSO want to sweep technology by swapping MemoryCellInputFile
 static const bool SWAP_CELL_FILES = false;
@@ -76,7 +78,7 @@ static const bool SWAP_CELL_FILES = false;
 static const std::vector<std::string> CELL_FILES_TO_TRY = {};
 
 // DESTINY binary path relative to config/
-static const std::string DESTINY_REL_PATH = "../destiny";
+static const std::string DESTINY_REL_PATH = "/pool0/avnivats/rsg/sweeps/destiny_3d_cache/destiny";
 
 // Output locations (relative to config/)
 static const std::string OUT_DIR = "sweep_out";
@@ -460,8 +462,7 @@ static ParsedMetrics parse_stdout(const std::string& out) {
         if (std::regex_match(line, m, design_target_re)) {
             pm.design_target = trim(std::string(m[1]));
             continue;
-        }
-        if (std::regex_match(line, m, csv_done_re)) {
+        }        if (std::regex_match(line, m, csv_done_re)) {
         pm.finished = true;
         continue;
         }
@@ -602,10 +603,12 @@ static std::string opt_to_string(const std::optional<std::string>& v) {
 // Main
 // ----------------------------
 
-int main() {
+int main(int argc, char** argv) {
     try {
-        // Must run from config/
-        fs::path config_dir = fs::current_path();
+        fs::path config_dir = (argc >= 2)
+        ? fs::path(argv[1])
+        : fs::current_path();
+        config_dir = fs::weakly_canonical(config_dir);
 
         fs::path destiny_path = fs::weakly_canonical(config_dir / DESTINY_REL_PATH);
         if (!fs::exists(destiny_path)) {
