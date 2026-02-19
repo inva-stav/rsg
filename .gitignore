@@ -1,0 +1,9 @@
+
+cat >> .gitignore <<'EOF'
+
+venv_post/
+sweeps/sweep_destiny
+*.o
+*.out
+sweeps/destiny_3d_cache/
+
