@@ -1,0 +1,35 @@
+{
+  "sweep": {
+    "cfg_templates": [
+      "sample_2D_eDRAM.cfg",
+      "sample_3D_eDRAM.cfg",
+      "sample_2DReRAM.cfg",
+      "sample_3DReRAM.cfg",
+      "sample_PCRAM.cfg",
+      "sample_STTRAM.cfg",
+      "sample_SRAM_2layer.cfg",
+      "sample_SRAM_4layer.cfg"
+    ],
+    "capacities_kb": [32, 64, 128, 256, 512, 1024],
+    "capacities_mb": [1, 2, 4, 8],
+    "sweep_opt_targets": true,
+    "opt_targets": [
+      "WriteEDP",
+      "ReadLatency",
+      "WriteLatency",
+      "ReadDynamicEnergy",
+      "WriteDynamicEnergy",
+      "Full"
+    ],
+    "swap_cell_files": false,
+    "cell_files_to_try": [],
+    "max_failures": 10
+  },
+  "postprocess": {
+    "pareto_metrics": [
+      "cacheHitLatency_ns",
+      "cacheLeakage_mW",
+      "cacheArea_mm2"
+    ]
+  }
+}
