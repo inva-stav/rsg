@@ -600,15 +600,54 @@ static std::string opt_to_string(const std::optional<std::string>& v) {
 }
 
 // ----------------------------
+// CLI helpers
+// ----------------------------
+
+static std::vector<std::string> split_comma(const std::string& s) {
+    std::vector<std::string> result;
+    std::string cur;
+    for (char c : s) {
+        if (c == ',') {
+            if (!cur.empty()) result.push_back(trim(cur));
+            cur.clear();
+        } else {
+            cur += c;
+        }
+    }
+    if (!cur.empty()) result.push_back(trim(cur));
+    return result;
+}
+
+// ----------------------------
 // Main
 // ----------------------------
 
 int main(int argc, char** argv) {
     try {
-        fs::path config_dir = (argc >= 2)
-        ? fs::path(argv[1])
-        : fs::current_path();
+        fs::path config_dir = fs::current_path();
+        std::optional<std::vector<std::string>> cli_templates;
+        std::optional<std::string> cli_out_dir;
+
+        for (int i = 1; i < argc; ++i) {
+            std::string arg = argv[i];
+            if (arg == "--templates" && i + 1 < argc) {
+                cli_templates = split_comma(argv[++i]);
+            } else if (arg == "--out-dir" && i + 1 < argc) {
+                cli_out_dir = argv[++i];
+            } else if (!arg.empty() && arg[0] != '-') {
+                config_dir = fs::path(arg);
+            } else if (arg != "--templates" && arg != "--out-dir") {
+                std::cerr << "[WARN] Unknown argument: " << arg << "\n";
+            }
+        }
         config_dir = fs::weakly_canonical(config_dir);
+
+        // Runtime overrides: --templates and --out-dir take precedence over
+        // the compile-time constants CFG_TEMPLATES / OUT_DIR.
+        const std::vector<std::string>& templates_to_use =
+            cli_templates.has_value() ? *cli_templates : CFG_TEMPLATES;
+        const std::string out_dir_name =
+            cli_out_dir.has_value() ? *cli_out_dir : OUT_DIR;
 
         fs::path destiny_path = fs::weakly_canonical(config_dir / DESTINY_REL_PATH);
         if (!fs::exists(destiny_path)) {
@@ -617,7 +656,7 @@ int main(int argc, char** argv) {
             return 2;
         }
 
-        fs::path out_dir = config_dir / OUT_DIR;
+        fs::path out_dir = config_dir / out_dir_name;
         fs::path tmp_dir = out_dir / "tmp_cfgs";
         fs::path logs_dir = out_dir / "logs";
         fs::create_directories(tmp_dir);
@@ -629,7 +668,7 @@ int main(int argc, char** argv) {
 
         // Resolve cfg templates that exist
         std::vector<fs::path> templates;
-        for (const auto& name : CFG_TEMPLATES) {
+        for (const auto& name : templates_to_use) {
             fs::path p = config_dir / name;
             if (fs::exists(p)) templates.push_back(p);
             else std::cerr << "[WARN] Template cfg not found, skipping: " << name << "\n";
@@ -860,8 +899,8 @@ int main(int argc, char** argv) {
         }
 
         std::cout << "\nDone. Wrote " << rows.size() << " rows to: " << csv_path.string() << "\n"
-                  << "Logs saved under: " << (fs::current_path() / OUT_DIR / "logs").string() << "\n"
-                  << "Temp cfgs saved under: " << (fs::current_path() / OUT_DIR / "tmp_cfgs").string() << "\n";
+                  << "Logs saved under: " << (out_dir / "logs").string() << "\n"
+                  << "Temp cfgs saved under: " << (out_dir / "tmp_cfgs").string() << "\n";
 
         return 0;
    
