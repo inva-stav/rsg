@@ -193,6 +193,25 @@ static double area_to_mm2(double val, const std::string& unit_raw) {
     throw std::runtime_error("Unknown area unit: " + unit_raw);
 }
 
+static double time_to_s(double val, const std::string& unit_raw) {
+    std::string unit = unit_raw;
+    std::transform(unit.begin(), unit.end(), unit.begin(), ::tolower);
+
+    if (unit == "ps") return val * 1e-12;
+    if (unit == "ns") return val * 1e-9;
+    if (unit == "us") return val * 1e-6;
+    if (unit == "ms") return val * 1e-3;
+    if (unit == "s")  return val;
+
+    // Common “human” units sometimes printed
+    if (unit == "min" || unit == "mins" || unit == "minute" || unit == "minutes") return val * 60.0;
+    if (unit == "h" || unit == "hr" || unit == "hrs" || unit == "hour" || unit == "hours") return val * 3600.0;
+    if (unit == "day" || unit == "days") return val * 86400.0;
+    if (unit == "year" || unit == "years" || unit == "yr" || unit == "yrs") return val * 365.0 * 86400.0;
+
+    throw std::runtime_error("Unknown retention time unit: " + unit_raw);
+}
+
 static double energy_to_pj(double val, const std::string& unit_raw) {
     std::string unit = unit_raw;
     std::transform(unit.begin(), unit.end(), unit.begin(), ::tolower);
@@ -353,6 +372,7 @@ struct ParsedMetrics {
     std::optional<double> read_dynamic_energy_pj;
     std::optional<double> write_dynamic_energy_pj;
     std::optional<double> leakage_power_uw;
+    std::optional<double> retention_time_s;
     bool finished = false;
 };
 
@@ -434,6 +454,12 @@ static ParsedMetrics parse_stdout(const std::string& out) {
         R"(^\s*-\s*Leakage Power\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*(pW|nW|uW|mW|W)\s*$)",
         std::regex::icase);
 
+
+    std::regex retention_re(
+        R"(^\s*-\s*(?:Cache\s+)?Retention(?:\s+Time)?\s*=\s*([0-9]+(?:\.[0-9]+)?)\s*(ps|ns|us|ms|s|min|mins|minute|minutes|h|hr|hrs|hour|hours|day|days|yr|yrs|year|years)\s*$)",
+        std::regex::icase
+    );
+
     std::regex finished_re(R"(^\s*Finished!\s*$)", std::regex::icase);
     std::regex using_cell_re(R"(^\s*Using cell file:\s*(\S+)\s*$)", std::regex::icase);
     std::regex optimized_re(R"(^\s*Optimized for:\s*(.+?)\s*$)", std::regex::icase);
@@ -506,6 +532,12 @@ static ParsedMetrics parse_stdout(const std::string& out) {
             saw_cache_summary_leak = true;
             continue;
         }
+        if (std::regex_match(line, m, retention_re)) {
+            double v = std::stod(m[1]);
+            pm.retention_time_s = time_to_s(v, m[2]);
+            continue;
+        }
+
 
         // ---------------------------------------
         // Fallback parsing (RAM / array-level)
@@ -574,7 +606,7 @@ struct Row {
     std::string design_target;
     std::string optimized_for;
     std::string optimization_target_cfg;
-
+    std::string retention_time_s;
     std::string read_latency_ns;
     std::string write_latency_ns;
     std::string area_mm2;
@@ -736,6 +768,14 @@ int main(int argc, char** argv) {
                             write_file(log_path, out);
 
                             ParsedMetrics pm = parse_stdout(out);
+                            if (ok && !pm.retention_time_s.has_value()) {
+                                std::cerr << "[WARN] Retention not found for cfg: " << rel_cfg.string()
+                                          << " (template=" << template_cfg.filename().string()
+                                          << ", cell=" << cell
+                                          << ", cap=" << cap << info.capacity_unit
+                                          << (SWEEP_OPT_TARGETS ? (", opt=" + opt_target) : "")
+                                          << ")\n";
+                            }
                             bool ok = (rc == 0) && pm.finished;
 
                             if (!ok) failures++;
@@ -768,7 +808,7 @@ int main(int argc, char** argv) {
                             r.optimized_for = opt_to_string(pm.optimized_for);
                             r.optimization_target_cfg = SWEEP_OPT_TARGETS ? opt_target : "";
 
-
+                            r.retention_time_s = opt_to_string(pm.retention_time_s);
                             r.read_latency_ns = opt_to_string(pm.read_latency_ns);
                             r.write_latency_ns = opt_to_string(pm.write_latency_ns);
                             r.area_mm2 = opt_to_string(pm.area_mm2);
@@ -817,7 +857,7 @@ int main(int argc, char** argv) {
 
         // Header
         csv << "template_cfg,run_cfg,capacity_value,capacity_unit,cell_file_cfg,cell_file_used,"
-       "design_target,optimized_for,optimization_target_cfg,read_latency_ns,write_latency_ns,area_mm2,"
+       "design_target,optimized_for,optimization_target_cfg,retention_time_s,read_latency_ns,write_latency_ns,area_mm2,"
        "read_dynamic_energy_pj,write_dynamic_energy_pj,leakage_power_uw,status,return_code,log_file,exploration_csv\n";
 
 
@@ -847,6 +887,7 @@ int main(int argc, char** argv) {
                 << esc(r.optimized_for) << ","
                 << esc(r.optimization_target_cfg) << ","
                 << esc(r.read_latency_ns) << ","
+                << esc(r.retention_time_s) << ","
                 << esc(r.write_latency_ns) << ","
                 << esc(r.area_mm2) << ","
                 << esc(r.read_dynamic_energy_pj) << ","
