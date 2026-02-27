@@ -24,6 +24,7 @@
 #include <cerrno>
 #include <cstdio>
 #include <cstdlib>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -642,6 +643,47 @@ int main(int argc, char** argv) {
         : fs::current_path();
         config_dir = fs::weakly_canonical(config_dir);
 
+        // ----------------------------
+        // CLI overrides (used by parallel Python driver)
+        // Format: [config_dir] [--templates t1.cfg,t2.cfg] [--capacities-kb 32,64]
+        //         [--capacities-mb 1,2] [--out-dir worker_0]
+        // Falls back to compile-time statics when flags are absent.
+        // ----------------------------
+        auto split_csv_str = [](const std::string& s) -> std::vector<std::string> {
+            std::vector<std::string> out;
+            std::istringstream ss(s);
+            std::string tok;
+            while (std::getline(ss, tok, ','))
+                if (!tok.empty()) out.push_back(tok);
+            return out;
+        };
+        auto split_csv_dbl = [](const std::string& s) -> std::vector<double> {
+            std::vector<double> out;
+            std::istringstream ss(s);
+            std::string tok;
+            while (std::getline(ss, tok, ','))
+                if (!tok.empty()) out.push_back(std::stod(tok));
+            return out;
+        };
+
+        std::vector<std::string> rt_templates;
+        std::vector<double>      rt_caps_kb;
+        std::vector<double>      rt_caps_mb;
+        std::string              rt_out_dir = OUT_DIR;
+
+        for (int i = (argc >= 2 ? 2 : 1); i + 1 < argc; i += 2) {
+            std::string key = argv[i];
+            std::string val = argv[i + 1];
+            if      (key == "--templates")     rt_templates = split_csv_str(val);
+            else if (key == "--capacities-kb") rt_caps_kb   = split_csv_dbl(val);
+            else if (key == "--capacities-mb") rt_caps_mb   = split_csv_dbl(val);
+            else if (key == "--out-dir")       rt_out_dir   = val;
+        }
+
+        const std::vector<std::string>& eff_templates = rt_templates.empty() ? CFG_TEMPLATES : rt_templates;
+        const std::vector<double>&      eff_caps_kb   = rt_caps_kb.empty()   ? CAPACITIES_KB : rt_caps_kb;
+        const std::vector<double>&      eff_caps_mb   = rt_caps_mb.empty()   ? CAPACITIES_MB : rt_caps_mb;
+
         fs::path destiny_path = fs::weakly_canonical(config_dir / DESTINY_REL_PATH);
         if (!fs::exists(destiny_path)) {
             std::cerr << "[ERROR] DESTINY binary not found at: " << destiny_path << "\n"
@@ -649,7 +691,7 @@ int main(int argc, char** argv) {
             return 2;
         }
 
-        fs::path out_dir = config_dir / OUT_DIR;
+        fs::path out_dir = config_dir / rt_out_dir;
         fs::path tmp_dir = out_dir / "tmp_cfgs";
         fs::path logs_dir = out_dir / "logs";
         fs::create_directories(tmp_dir);
@@ -661,7 +703,7 @@ int main(int argc, char** argv) {
 
         // Resolve cfg templates that exist
         std::vector<fs::path> templates;
-        for (const auto& name : CFG_TEMPLATES) {
+        for (const auto& name : eff_templates) {
             fs::path p = config_dir / name;
             if (fs::exists(p)) templates.push_back(p);
             else std::cerr << "[WARN] Template cfg not found, skipping: " << name << "\n";
@@ -699,8 +741,8 @@ int main(int argc, char** argv) {
             std::string template_text = read_file(template_cfg);
 
             const std::vector<double>* caps = nullptr;
-            if (info.capacity_unit == "KB") caps = &CAPACITIES_KB;
-            else if (info.capacity_unit == "MB") caps = &CAPACITIES_MB;
+            if (info.capacity_unit == "KB") caps = &eff_caps_kb;
+            else if (info.capacity_unit == "MB") caps = &eff_caps_mb;
             else {
                 std::cerr << "[WARN] Unknown capacity unit in " << template_cfg.filename().string()
                           << ": " << info.capacity_unit << " (skipping)\n";
@@ -768,6 +810,7 @@ int main(int argc, char** argv) {
                             write_file(log_path, out);
 
                             ParsedMetrics pm = parse_stdout(out);
+                            bool ok = (rc == 0) && pm.finished;
                             if (ok && !pm.retention_time_s.has_value()) {
                                 std::cerr << "[WARN] Retention not found for cfg: " << rel_cfg.string()
                                           << " (template=" << template_cfg.filename().string()
@@ -776,7 +819,6 @@ int main(int argc, char** argv) {
                                           << (SWEEP_OPT_TARGETS ? (", opt=" + opt_target) : "")
                                           << ")\n";
                             }
-                            bool ok = (rc == 0) && pm.finished;
 
                             if (!ok) failures++;
                             
@@ -901,8 +943,8 @@ int main(int argc, char** argv) {
         }
 
         std::cout << "\nDone. Wrote " << rows.size() << " rows to: " << csv_path.string() << "\n"
-                  << "Logs saved under: " << (fs::current_path() / OUT_DIR / "logs").string() << "\n"
-                  << "Temp cfgs saved under: " << (fs::current_path() / OUT_DIR / "tmp_cfgs").string() << "\n";
+                  << "Logs saved under: " << (out_dir / "logs").string() << "\n"
+                  << "Temp cfgs saved under: " << (out_dir / "tmp_cfgs").string() << "\n";
 
         return 0;
    
