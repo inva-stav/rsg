@@ -6,4 +6,6 @@ sweeps/sweep_destiny
 *.o
 *.out
 sweeps/destiny_3d_cache/
+__pycache__/
+*.pyc
 
