@@ -195,7 +195,7 @@ ls sweep_out/
 
 * This tool does not modify DESTINY internals.
 * Parsing relies on stable DESTINY stdout formatting.
-* Parallel execution is not currently supported (single-process sweep).
+* Parallel execution across memory technologies is available via `parallel_sweep.py` — see [`README_parallel.md`](README_parallel.md).
 
 ---
 
