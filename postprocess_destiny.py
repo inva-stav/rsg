@@ -44,9 +44,9 @@ BANK_COLUMNS = [
     "localWireType", "localWireRepeaterType", "localWireLowSwing",
     "globalWireType", "globalWireRepeaterType", "globalWireLowSwing",
     "bufferDesignStyle",
-    "bankHeight_um", "bankWidth_um", "bankArea_um2",
-    "matHeight_um", "matWidth_um", "matArea_um2",
-    "subarrayHeight_um", "subarrayWidth_um", "subarrayArea_um2",
+    "bankHeight_um", "bankWidth_um", "bankArea_mm2",
+    "matHeight_um", "matWidth_um", "matArea_mm2",
+    "subarrayHeight_um", "subarrayWidth_um", "subarrayArea_mm2",
     "areaEfficiency_pct",
     "readLatency_ns", "writeLatency_ns", "refreshLatency_ns",
     "readDynamicEnergy_pJ", "writeDynamicEnergy_pJ", "refreshDynamicEnergy_pJ",
@@ -258,13 +258,51 @@ def load_raw_csv(csv_path: Path, headers: list[str]) -> pd.DataFrame:
 
 def clean_numeric_values(df: pd.DataFrame) -> pd.DataFrame:
     """Strip unit suffixes from numeric columns, converting to canonical units."""
+    _extract_re = r'^([+-]?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*(.+)$'
     for col in df.columns:
-        if _get_column_unit_suffix(col) is not None:
-            df[col] = df[col].apply(
-                lambda v, c=col: _strip_unit_and_convert(str(v), c)
-                if pd.notna(v) else v
-            )
+        suffix = _get_column_unit_suffix(col)
+        if suffix is None:
+            continue
+        conversions = UNIT_CONVERSIONS[suffix]
+        s = df[col].astype(str).str.strip()
+        extracted = s.str.extract(_extract_re, expand=True)
+        nums = pd.to_numeric(extracted[0], errors='coerce')
+        scales = extracted[1].map(conversions)
+        converted = nums * scales
+        fallback = pd.to_numeric(s, errors='coerce')
+        df[col] = converted.where(converted.notna(), fallback)
     return df
+
+
+# Columns in memory-mode output that should be renamed (and optionally rescaled)
+# to match the cache-mode naming convention used downstream.
+# Format: old_name -> (new_name, scale_factor)
+_MEMORY_COLUMN_REMAP: dict[str, tuple[str, float]] = {
+    "readLatency_ns":        ("cacheHitLatency_ns",          1.0),
+    "writeLatency_ns":       ("cacheWriteLatency_ns",         1.0),
+    "bankArea_mm2":          ("cacheArea_mm2",                1.0),
+    "readDynamicEnergy_pJ":  ("cacheHitDynamicEnergy_nJ",    1e-3),
+    "writeDynamicEnergy_pJ": ("cacheWriteDynamicEnergy_nJ",  1e-3),
+    "leakage_mW":            ("cacheLeakage_mW",              1.0),
+}
+
+
+def remap_memory_columns(df: pd.DataFrame) -> pd.DataFrame:
+    """Rename and rescale memory-mode columns to match cache-mode naming.
+
+    Remapped columns are moved to the front of the DataFrame.
+    """
+    rename_map = {}
+    for old, (new, scale) in _MEMORY_COLUMN_REMAP.items():
+        if old not in df.columns:
+            continue
+        if scale != 1.0:
+            df[old] = df[old] * scale
+        rename_map[old] = new
+    df = df.rename(columns=rename_map)
+    new_names = [new for _, (new, _) in _MEMORY_COLUMN_REMAP.items() if new in df.columns]
+    remaining = [c for c in df.columns if c not in new_names]
+    return df[new_names + remaining]
 
 
 def add_metadata_columns(df: pd.DataFrame, filename: str) -> pd.DataFrame:
@@ -316,6 +354,8 @@ def process_csvs(
 
             df = load_raw_csv(csv_path, headers)
             df = clean_numeric_values(df)
+            if mode == "memory":
+                df = remap_memory_columns(df)
             df = add_metadata_columns(df, csv_path.name)
             frames.append(df)
         except (ValueError, KeyError) as e:
@@ -409,7 +449,6 @@ def process_csvs(
 
 DEFAULT_PARETO_METRICS = [
     "cacheHitLatency_ns",
-    "cacheLeakage_mW",
     "cacheArea_mm2",
 ]
 
