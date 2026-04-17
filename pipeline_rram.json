@@ -1,0 +1,22 @@
+{
+  "sweep": {
+    "cfg_templates": [
+      "sample_2DReRAM.cfg"
+    ],
+    "capacities_kb": [2, 4, 8, 16, 32, 64, 128, 256],
+    "capacities_mb": [],
+    "sweep_opt_targets": true,
+    "opt_targets": [
+      "Full"
+    ],
+    "swap_cell_files": false,
+    "cell_files_to_try": [],
+    "max_failures": 10
+  },
+  "postprocess": {
+    "pareto_metrics": [
+      "cacheHitLatency_ns",
+      "cacheArea_mm2"
+    ]
+  }
+}

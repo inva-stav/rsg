@@ -768,6 +768,7 @@ int main(int argc, char** argv) {
                             write_file(log_path, out);
 
                             ParsedMetrics pm = parse_stdout(out);
+                            bool ok = (rc == 0) && pm.finished;
                             if (ok && !pm.retention_time_s.has_value()) {
                                 std::cerr << "[WARN] Retention not found for cfg: " << rel_cfg.string()
                                           << " (template=" << template_cfg.filename().string()
@@ -776,7 +777,6 @@ int main(int argc, char** argv) {
                                           << (SWEEP_OPT_TARGETS ? (", opt=" + opt_target) : "")
                                           << ")\n";
                             }
-                            bool ok = (rc == 0) && pm.finished;
 
                             if (!ok) failures++;
                             
