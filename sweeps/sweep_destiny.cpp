@@ -78,7 +78,7 @@ static const bool SWAP_CELL_FILES = false;
 static const std::vector<std::string> CELL_FILES_TO_TRY = {};
 
 // DESTINY binary path relative to config/
-static const std::string DESTINY_REL_PATH = "/pool0/avnivats/rsg/sweeps/destiny_3d_cache/destiny";
+static const std::string DESTINY_REL_PATH = "../destiny";
 
 // Output locations (relative to config/)
 static const std::string OUT_DIR = "sweep_out";

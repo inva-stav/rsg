@@ -49,6 +49,8 @@ BANK_COLUMNS = [
     "subarrayHeight_um", "subarrayWidth_um", "subarrayArea_mm2",
     "areaEfficiency_pct",
     "readLatency_ns", "writeLatency_ns", "refreshLatency_ns",
+    "matReadLatency_ns", "matWriteLatency_ns",
+    "subarrayReadLatency_ns", "subarrayWriteLatency_ns",
     "readDynamicEnergy_pJ", "writeDynamicEnergy_pJ", "refreshDynamicEnergy_pJ",
     "leakage_mW", "refreshPower_W",
 ]

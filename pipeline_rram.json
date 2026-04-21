@@ -3,7 +3,7 @@
     "cfg_templates": [
       "sample_2DReRAM.cfg"
     ],
-    "capacities_kb": [2, 4, 8, 16, 32, 64, 128, 256],
+    "capacities_kb": [1, 2, 4, 8, 16, 32, 64, 128, 256],
     "capacities_mb": [],
     "sweep_opt_targets": true,
     "opt_targets": [
